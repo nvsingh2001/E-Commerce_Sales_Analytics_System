@@ -1,0 +1,25 @@
+# System and Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.env
+
+# Spark and local execution files
+.ipynb_checkpoints/
+metastore_db/
+derby.log
+spark-warehouse/
+
+# Local database secrets and credentials
+.env
+
+# Local datasets (raw, extracts, and curated parquet)
+datasets/
+
+# Compiled documentation and outputs (kept offline)
+documentation/*.docx
+screenshots/
+testing/test_cases.xlsx
