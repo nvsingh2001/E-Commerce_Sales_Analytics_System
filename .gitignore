@@ -20,6 +20,7 @@ spark-warehouse/
 datasets/
 
 # Compiled documentation and outputs (kept offline)
-documentation/*.docx
+documentation/
+.agents/
 screenshots/
 testing/test_cases.xlsx
