@@ -23,3 +23,10 @@ datasets/
 documentation/*.docx
 screenshots/
 testing/test_cases.xlsx
+
+*.pyc
+*.png
+*.xlsx
+
+.idea/
+.vscode/
