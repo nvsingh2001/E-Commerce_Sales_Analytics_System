@@ -3,7 +3,7 @@ import sys
 from dotenv import load_dotenv
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from platform_commands import DatabaseConnector
+from repositories.database_connector import DatabaseConnector
 
 
 class SchemaInitializer:

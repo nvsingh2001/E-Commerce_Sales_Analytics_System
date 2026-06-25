@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from platform_commands import DatabaseConnector
+from repositories.database_connector import DatabaseConnector
 
 # Set page config
 st.set_page_config(

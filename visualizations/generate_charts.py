@@ -323,7 +323,7 @@ class ChartOrchestrator:
 
 
 def main():
-    from platform_commands import DatabaseConnector
+    from repositories.database_connector import DatabaseConnector
 
     db_connector = DatabaseConnector()
     charts = [
