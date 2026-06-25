@@ -138,34 +138,53 @@ class DataTransformer:
         products = cleaned_dfs["products"]
         orders = cleaned_dfs["orders"]
         
-        # Derive revenue and order_status columns
+        # 1. Enriched Orders (fact_orders target format)
+        # Compute line_total = quantity * unit_price
+        # Derive order_status from invoice_no: 'Cancelled' if starts with 'C', else 'Completed'
         enriched_orders = orders \
-            .withColumn("revenue", F.round(F.col("quantity") * F.col("unit_price"), 2)) \
+            .withColumn("line_total", F.round(F.col("quantity") * F.col("unit_price"), 2)) \
             .withColumn(
                 "order_status",
                 F.when(F.col("invoice_no").startswith("C"), F.lit("Cancelled"))
                 .otherwise(F.lit("Completed"))
             )
             
-        # Calculate product avg_unit_price
-        # Group by stock_code to get mean UnitPrice across completed transactions
+        # Standardize columns to match fact_orders exactly:
+        # order_id, customer_id, product_id, order_date, quantity, unit_price, line_total, order_status
+        fact_orders = enriched_orders.select(
+            F.col("invoice_no").alias("order_id"),
+            F.col("customer_id"),
+            F.col("stock_code").alias("product_id"),
+            F.col("order_date"),
+            F.col("quantity"),
+            F.col("unit_price"),
+            F.col("line_total"),
+            F.col("order_status")
+        )
+            
+        # 2. dim_products
+        # Calculate product avg_unit_price across completed transactions
         avg_prices = enriched_orders \
             .filter(F.col("order_status") == "Completed") \
             .groupBy("stock_code") \
             .agg(F.round(F.mean("unit_price"), 2).alias("avg_unit_price"))
             
-        # Join products with average unit price to match Ayush's dim_products
+        # Join products with average unit price to get dim_products
         dim_products = products.join(avg_prices, "stock_code", "left") \
-            .withColumn("unit_price", F.coalesce(F.col("avg_unit_price"), F.lit(0.00))) \
-            .drop("avg_unit_price")
+            .withColumn("avg_unit_price", F.coalesce(F.col("avg_unit_price"), F.lit(0.00)))
             
         # Resolve product descriptions by picking the first non-null description per stock_code
         w_prod_desc = Window.partitionBy("stock_code").orderBy(F.col("description").desc())
         dim_products = dim_products \
             .withColumn("row_num", F.row_number().over(w_prod_desc)) \
             .filter(F.col("row_num") == 1) \
-            .drop("row_num")
+            .select(
+                F.col("stock_code").alias("product_id"),
+                F.col("description").alias("product_name"),
+                F.col("avg_unit_price")
+            )
         
+        # 3. dim_customers
         # Calculate RFM customer segment
         customer_segments = self.rfm_segmenter.compute_segments(enriched_orders)
         dim_customers = customers.join(customer_segments, "customer_id", "left")
@@ -175,54 +194,91 @@ class DataTransformer:
         dim_customers = dim_customers \
             .withColumn("row_num", F.row_number().over(w_cust_country)) \
             .filter(F.col("row_num") == 1) \
-            .drop("row_num")
+            .select(
+                F.col("customer_id"),
+                F.col("country"),
+                F.col("customer_segment")
+            )
         
         # --- Aggregation 1: analytics.revenue_summary ---
-        # First day of the calendar month
+        # First day of the calendar month (month)
         completed_orders = enriched_orders.filter(F.col("order_status") == "Completed")
         
         revenue_summary = completed_orders \
             .join(dim_customers, "customer_id", "inner") \
-            .withColumn("revenue_month", F.month(F.col("order_date"))) \
-            .withColumn("revenue_year", F.year(F.col("order_date"))) \
-            .groupBy("country", "revenue_month", "revenue_year") \
+            .withColumn("month", F.date_trunc("month", F.col("order_date")).cast("date")) \
+            .groupBy("country", "month") \
             .agg(
                 F.countDistinct("invoice_no").alias("total_orders"),
-                F.round(F.sum("revenue"), 2).alias("total_revenue")
-            )
+                F.round(F.sum("line_total"), 2).alias("total_revenue")
+            ) \
+            .withColumn("average_order_value", F.round(F.col("total_revenue") / F.col("total_orders"), 2)) \
+            .select("country", "month", "total_revenue", "total_orders", "average_order_value")
             
         # --- Aggregation 2: analytics.customer_retention ---
         retention_base = completed_orders \
+            .filter(F.col("customer_id").isNotNull()) \
             .groupBy("customer_id") \
             .agg(
                 F.countDistinct("invoice_no").alias("total_orders"),
-                F.min(F.col("order_date")).alias("first_purchase"),
-                F.max(F.col("order_date")).alias("last_purchase")
+                F.round(F.sum("line_total"), 2).alias("lifetime_spend"),
+                F.min(F.col("order_date")).cast("date").alias("first_order_date"),
+                F.max(F.col("order_date")).cast("date").alias("last_order_date")
             )
             
-        customer_retention = retention_base.withColumn(
-            "repeat_customer",
-            F.when(F.col("total_orders") >= 2, F.lit(True)).otherwise(F.lit(False))
+        # Calculate max order date in dataset to determine lapsed status
+        max_date_row = completed_orders.select(F.max("order_date")).collect()
+        max_dataset_date = max_date_row[0][0] if max_date_row and max_date_row[0][0] else None
+        
+        if max_dataset_date:
+            customer_retention = retention_base.withColumn(
+                "customer_status",
+                F.when(F.col("total_orders") == 1, F.lit("New"))
+                .when(F.datediff(F.lit(max_dataset_date), F.col("last_order_date")) > 180, F.lit("Lapsed"))
+                .otherwise(F.lit("Repeat"))
+            )
+        else:
+            customer_retention = retention_base.withColumn(
+                "customer_status",
+                F.when(F.col("total_orders") == 1, F.lit("New")).otherwise(F.lit("Repeat"))
+            )
+            
+        customer_retention = customer_retention.select(
+            "customer_id",
+            "total_orders",
+            "lifetime_spend",
+            "first_order_date",
+            "last_order_date",
+            "customer_status"
         )
                 
         # --- Aggregation 3: analytics.product_performance ---
+        # Group by product and month
         product_performance = completed_orders \
-            .groupBy("stock_code") \
+            .withColumn("month", F.date_trunc("month", F.col("order_date")).cast("date")) \
+            .groupBy("stock_code", "month") \
             .agg(
-                F.sum("quantity").alias("total_quantity"),
-                F.round(F.sum("revenue"), 2).alias("total_revenue")
+                F.sum("quantity").alias("units_sold"),
+                F.round(F.sum("line_total"), 2).alias("total_revenue")
             )
             
-        # Rank overall (dense_rank by total revenue across catalog)
-        window_rank = Window.orderBy(F.col("total_revenue").desc())
+        # Rank overall (dense_rank by total revenue across catalog, partitioned by month)
+        window_rank = Window.partitionBy("month").orderBy(F.col("total_revenue").desc())
         product_performance = product_performance \
-            .withColumn("product_rank", F.dense_rank().over(window_rank))
+            .withColumn("overall_rank", F.dense_rank().over(window_rank)) \
+            .select(
+                F.col("stock_code").alias("product_id"),
+                F.col("month"),
+                F.col("units_sold"),
+                F.col("total_revenue"),
+                F.col("overall_rank")
+            )
             
         return {
             "dim_customers": dim_customers,
             "dim_products": dim_products,
-            "orders_pre_load": enriched_orders, # Pass enriched orders to load stage
+            "fact_orders": fact_orders,
             "revenue_summary": revenue_summary,
-            "customer_retention_pre_load": customer_retention,
-            "product_performance_pre_load": product_performance
+            "customer_retention": customer_retention,
+            "product_performance": product_performance
         }
