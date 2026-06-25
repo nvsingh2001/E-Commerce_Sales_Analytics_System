@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-env_path = "/home/ares/projects/BridgeLabz/E-Commerce_Sales_Analytics_System/.env"
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(env_path)
 
 def load_sql_query(filename):
