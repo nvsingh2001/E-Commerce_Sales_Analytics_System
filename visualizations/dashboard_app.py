@@ -99,8 +99,8 @@ if not kpi_df.empty:
 
 st.markdown("### ")
 
-tab_trends, tab_products, tab_customers = st.tabs(
-    ["📈 Revenue Trends", "📦 Product Performance", "👥 Customer Analysis"]
+tab_trends, tab_products, tab_customers, tab_platform = st.tabs(
+    ["📈 Revenue Trends", "📦 Product Performance", "👥 Customer Analysis", "🎛️ Platform Manager"]
 )
 
 with tab_trends:
@@ -297,3 +297,58 @@ with tab_customers:
             marker_line_color="#1a1a1a", marker_line_width=1.0, opacity=0.85
         )
         st.plotly_chart(fig_hist, use_container_width=True)
+
+with tab_platform:
+    st.subheader("🎛️ Data Platform Control Panel")
+    st.markdown("Manage and monitor the E-Commerce analytics pipeline and RDS data layer.")
+    
+    col_p1, col_p2 = st.columns(2)
+    
+    with col_p1:
+        st.markdown("### 📊 Database Table Overview")
+        # Let user preview tables
+        table_to_preview = st.selectbox(
+            "Select Table to Preview",
+            [
+                "dim_customers", 
+                "dim_products", 
+                "fact_orders", 
+                "analytics.revenue_summary", 
+                "analytics.customer_retention", 
+                "analytics.product_performance"
+            ]
+        )
+        preview_limit = st.slider("Rows to Preview", min_value=5, max_value=50, value=10)
+        
+        if st.button("Preview Table Data"):
+            preview_df = run_query(f"SELECT * FROM {table_to_preview} LIMIT {preview_limit}")
+            if not preview_df.empty:
+                st.dataframe(preview_df, use_container_width=True)
+            else:
+                st.warning("Table is empty or could not be queried.")
+                
+    with col_p2:
+        st.markdown("### ⚙️ Pipeline Control Operations")
+        st.info("Initiate pipeline runs or regenerate analytical visual reporting assets.")
+        
+        if st.button("🚀 Trigger PySpark ETL Pipeline Run"):
+            with st.spinner("Executing ETL Pipeline (Extract -> Transform -> Load)... This may take several minutes."):
+                try:
+                    # Clear caching so new data loads properly
+                    st.cache_data.clear()
+                    from etl.pipeline import EcommerceSalesAnalyticsPipeline
+                    pipeline = EcommerceSalesAnalyticsPipeline()
+                    pipeline.run()
+                    st.success("ETL Pipeline completed successfully! RDS tables updated.")
+                    st.rerun() # Refresh the page to reload the metric updates
+                except Exception as e:
+                    st.error(f"ETL Pipeline execution failed: {e}")
+                    
+        if st.button("🎨 Regenerate Static Report Charts"):
+            with st.spinner("Generating static charts (Matplotlib/Seaborn)..."):
+                try:
+                    from visualizations.generate_charts import main as generate_main
+                    generate_main()
+                    st.success("All static charts generated successfully in 'visualizations/static/'!")
+                except Exception as e:
+                    st.error(f"Failed to generate static charts: {e}")
