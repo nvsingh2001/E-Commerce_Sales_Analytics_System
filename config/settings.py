@@ -5,7 +5,6 @@ load_dotenv()
 
 
 class Settings:
-
     AWS_REGION = os.getenv("AWS_REGION", "ap-south-1")
 
     DB_HOST = os.getenv("DB_HOST")
@@ -16,3 +15,4 @@ class Settings:
     DB_PASSWORD = os.getenv("DB_PASSWORD")
 
     S3_BUCKET = os.getenv("S3_BUCKET")
+
