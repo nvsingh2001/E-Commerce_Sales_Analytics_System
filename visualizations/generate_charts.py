@@ -98,15 +98,7 @@ def generate_revenue_by_country(conn, output_dir):
 def generate_product_performance(conn, output_dir):
     print("Generating Product Performance charts...")
     # Query product performance
-    query = """
-        SELECT 
-            dp.product_name, 
-            SUM(pp.units_sold) as total_units
-        FROM analytics.product_performance pp
-        JOIN dim_products dp ON pp.product_id = dp.product_id
-        GROUP BY dp.product_id, dp.product_name
-        ORDER BY total_units DESC
-    """
+    query = load_sql_query('product_units_sold.sql')
     df = run_query(query, conn)
     if df.empty:
         print("No product performance data found.")
@@ -141,12 +133,7 @@ def generate_product_performance(conn, output_dir):
 
 def generate_customer_segment_distribution(conn, output_dir):
     print("Generating Customer Segment Distribution pie chart...")
-    query = """
-        SELECT customer_segment, COUNT(*) as count
-        FROM dim_customers
-        WHERE customer_segment IS NOT NULL
-        GROUP BY customer_segment
-    """
+    query = load_sql_query('customer_segment_distribution.sql')
     df = run_query(query, conn)
     if df.empty:
         print("No customer segment data found.")
@@ -166,14 +153,12 @@ def generate_customer_segment_distribution(conn, output_dir):
 
 def generate_order_value_distribution(conn, output_dir):
     print("Generating Order Value Distribution histogram...")
-    query = """
-        SELECT order_id, SUM(line_total) as order_value
-        FROM fact_orders
-        WHERE order_status = 'Completed'
-        GROUP BY order_id
-        HAVING SUM(line_total) > 0 AND SUM(line_total) < 1000
-    """
-    df = run_query(query, conn)
+    query = load_sql_query('order_value_distribution.sql')
+    df_all = run_query(query, conn)
+    if df_all.empty:
+        print("No order value data found.")
+        return
+    df = df_all[df_all['order_value'] < 1000]
     if df.empty:
         print("No order value data found.")
         return
@@ -193,11 +178,7 @@ def generate_order_value_distribution(conn, output_dir):
 
 def generate_revenue_intensity_heatmap(conn, output_dir):
     print("Generating Revenue Intensity Heatmap...")
-    query = """
-        SELECT country, month, SUM(total_revenue) as revenue
-        FROM analytics.revenue_summary
-        GROUP BY country, month
-    """
+    query = load_sql_query('heatmap_revenue.sql')
     df = run_query(query, conn)
     if df.empty:
         print("No revenue summary data found for heatmap.")
@@ -206,14 +187,9 @@ def generate_revenue_intensity_heatmap(conn, output_dir):
     df['month'] = pd.to_datetime(df['month']).dt.strftime('%Y-%m')
     
     # Filter for top countries to keep heatmap clean
-    top_countries_query = """
-        SELECT country
-        FROM analytics.revenue_summary
-        GROUP BY country
-        ORDER BY SUM(total_revenue) DESC
-        LIMIT 10
-    """
-    top_countries_df = run_query(top_countries_query, conn)
+    top_countries_query = load_sql_query('revenue_per_country.sql')
+    top_countries_df_all = run_query(top_countries_query, conn)
+    top_countries_df = top_countries_df_all.head(10)
     top_countries = top_countries_df['country'].tolist()
     
     df_filtered = df[df['country'].isin(top_countries)]
