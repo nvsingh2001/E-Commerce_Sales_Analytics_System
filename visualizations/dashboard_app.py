@@ -65,16 +65,8 @@ def get_order_values_cached():
         conn_local = psycopg2.connect(
             host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass
         )
-        df = pd.read_sql_query(
-            """
-            SELECT order_id, SUM(line_total) as order_value
-            FROM fact_orders
-            WHERE order_status = 'Completed'
-            GROUP BY order_id
-            HAVING SUM(line_total) > 0
-        """,
-            conn_local,
-        )
+        query = load_sql_query("order_value_distribution.sql")
+        df = pd.read_sql_query(query, conn_local)
         conn_local.close()
         return df
     except Exception as e:
@@ -85,14 +77,7 @@ def get_order_values_cached():
 st.title("🛍️ E-Commerce Sales Analytics Dashboard")
 st.markdown("---")
 
-kpi_query = """
-SELECT 
-    (SELECT SUM(line_total) FROM fact_orders WHERE order_status = 'Completed') as total_revenue,
-    (SELECT COUNT(DISTINCT order_id) FROM fact_orders WHERE order_status = 'Completed') as total_orders,
-    (SELECT COUNT(DISTINCT customer_id) FROM dim_customers) as total_customers,
-    (SELECT COUNT(*) FROM analytics.customer_retention WHERE total_orders >= 2) as repeat_customers,
-    (SELECT COUNT(*) FROM analytics.customer_retention) as total_retention_customers
-"""
+kpi_query = load_sql_query("kpi_metrics.sql")
 kpi_df = run_query(kpi_query)
 
 if not kpi_df.empty:
@@ -157,11 +142,8 @@ with tab_trends:
             st.plotly_chart(fig_country, use_container_width=True)
 
     st.subheader("Country-by-Month Revenue Intensity Heatmap")
-    heatmap_raw = run_query("""
-        SELECT country, month, SUM(total_revenue) as revenue
-        FROM analytics.revenue_summary
-        GROUP BY country, month
-    """)
+    heatmap_query = load_sql_query("heatmap_revenue.sql")
+    heatmap_raw = run_query(heatmap_query)
     if not heatmap_raw.empty:
         heatmap_raw["month"] = pd.to_datetime(heatmap_raw["month"]).dt.strftime("%Y-%m")
         heatmap_raw["revenue"] = heatmap_raw["revenue"].astype(float)
@@ -196,16 +178,8 @@ with tab_products:
     col_p1, col_p2 = st.columns(2)
 
     # Query product performance data
-    prod_perf_df = run_query("""
-        SELECT 
-            dp.product_id, 
-            dp.product_name, 
-            SUM(pp.units_sold) as total_units,
-            SUM(pp.total_revenue) as total_revenue
-        FROM analytics.product_performance pp
-        JOIN dim_products dp ON pp.product_id = dp.product_id
-        GROUP BY dp.product_id, dp.product_name
-    """)
+    prod_perf_query = load_sql_query("product_units_sold.sql")
+    prod_perf_df = run_query(prod_perf_query)
 
     if not prod_perf_df.empty:
         top_prod = prod_perf_df.sort_values(by="total_units", ascending=False).head(5)
@@ -257,12 +231,8 @@ with tab_customers:
 
     with col_c1:
         st.subheader("Customer Segment Distribution")
-        segment_df = run_query("""
-            SELECT customer_segment, COUNT(*) as count
-            FROM dim_customers
-            WHERE customer_segment IS NOT NULL
-            GROUP BY customer_segment
-        """)
+        segment_query = load_sql_query("customer_segment_distribution.sql")
+        segment_df = run_query(segment_query)
         if not segment_df.empty:
             fig_segment = px.pie(
                 segment_df,
