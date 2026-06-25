@@ -137,13 +137,21 @@ with tab_trends:
     """)
     if not heatmap_raw.empty:
         heatmap_raw['month'] = pd.to_datetime(heatmap_raw['month']).dt.strftime('%Y-%m')
+        heatmap_raw['revenue'] = heatmap_raw['revenue'].astype(float)
+        
+        # Filter for top 10 countries by total revenue to keep the heatmap readable
+        top_countries = heatmap_raw.groupby('country')['revenue'].sum().nlargest(10).index.tolist()
+        heatmap_filtered = heatmap_raw[heatmap_raw['country'].isin(top_countries)]
+        
         # Pivot table
-        heatmap_df = heatmap_raw.pivot(index='country', columns='month', values='revenue').fillna(0)
+        heatmap_df = heatmap_filtered.pivot(index='country', columns='month', values='revenue').fillna(0)
+        # Reindex to display top countries first
+        heatmap_df = heatmap_df.reindex(top_countries)
         
         # Display using Matplotlib/Seaborn
         fig, ax = plt.subplots(figsize=(12, 6))
         sns.heatmap(heatmap_df, cmap="viridis", annot=False, fmt=".0f", ax=ax, cbar_kws={'label': 'Revenue (£)'})
-        plt.title("Revenue Intensity Heatmap (Country vs Month)")
+        plt.title("Revenue Intensity Heatmap (Top 10 Countries)")
         plt.xlabel("Month")
         plt.ylabel("Country")
         plt.tight_layout()
