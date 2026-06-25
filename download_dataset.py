@@ -4,6 +4,7 @@ import requests
 import pandas as pd
 import boto3
 from dotenv import load_dotenv
+from config.settings import Settings
 
 # Load environment variables
 load_dotenv()
@@ -27,8 +28,9 @@ class DatasetIngestor:
         self._excel_path = os.path.join(self._raw_dir, excel_filename)
         self._csv_path = os.path.join(self._raw_dir, csv_filename)
         
-        self._s3_bucket = os.getenv("S3_BUCKET_NAME") or os.getenv("S3_BUCKET")
-        self._aws_region = os.getenv("AWS_REGION", "ap-south-1")
+        self._s3_bucket = Settings.S3_BUCKET
+        self._aws_region = Settings.AWS_REGION
+
         
         # Ensure directories exist
         os.makedirs(self._raw_dir, exist_ok=True)

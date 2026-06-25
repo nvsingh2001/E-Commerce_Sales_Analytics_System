@@ -4,6 +4,8 @@ import subprocess
 import psycopg2
 from abc import ABC, abstractmethod
 
+from config.settings import Settings
+
 class DatabaseConnector:
     """
     Singleton Database Connector class. Ensures only a single connection 
@@ -14,12 +16,13 @@ class DatabaseConnector:
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super(DatabaseConnector, cls).__new__(cls)
-            cls._instance._db_host = os.getenv('DB_HOST')
-            cls._instance._db_name = os.getenv('DB_NAME')
-            cls._instance._db_user = os.getenv('DB_USER')
-            cls._instance._db_pass = os.getenv('DB_PASSWORD')
-            cls._instance._db_port = os.getenv('DB_PORT', '5432')
+            cls._instance._db_host = Settings.DB_HOST
+            cls._instance._db_name = Settings.DB_NAME
+            cls._instance._db_user = Settings.DB_USER
+            cls._instance._db_pass = Settings.DB_PASSWORD
+            cls._instance._db_port = Settings.DB_PORT
         return cls._instance
+
 
     def get_connection(self):
         """Creates and returns a new psycopg2 connection instance based on the singleton config."""
