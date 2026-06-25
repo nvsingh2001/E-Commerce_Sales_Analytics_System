@@ -245,7 +245,7 @@ with tab_customers:
                               color='lifetime_spend',
                               labels={'customer_id': 'Customer ID', 'lifetime_spend': 'Lifetime Spend (£)'},
                               title="Top 10 Valuable Customers",
-                              color_continuous_scale=px.colors.sequential.Deep)
+                              color_continuous_scale=px.colors.sequential.deep)
             fig_cust.update_layout(template="plotly_dark")
             st.plotly_chart(fig_cust, use_container_width=True)
             
