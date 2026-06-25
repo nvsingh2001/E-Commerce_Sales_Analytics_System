@@ -5,234 +5,272 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from dotenv import load_dotenv
 
-# Set style for high-quality, professional visualizations
 sns.set_theme(style="whitegrid")
-plt.rcParams.update({
-    'font.size': 12,
-    'axes.labelsize': 14,
-    'axes.titlesize': 16,
-    'xtick.labelsize': 12,
-    'ytick.labelsize': 12,
-    'figure.titlesize': 18,
-    'figure.figsize': (10, 6)
-})
+plt.rcParams.update(
+    {
+        "font.size": 12,
+        "axes.labelsize": 14,
+        "axes.titlesize": 16,
+        "xtick.labelsize": 12,
+        "ytick.labelsize": 12,
+        "figure.titlesize": 18,
+        "figure.figsize": (10, 6),
+    }
+)
 
-# Load environment variables
-env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
 load_dotenv(env_path)
 
+
 def load_sql_query(filename):
-    sql_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'sql', 'analysis_queries', filename)
-    with open(sql_path, 'r') as f:
+    sql_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "sql", "analysis_queries", filename
+    )
+    with open(sql_path, "r") as f:
         return f.read()
 
+
 def get_db_connection():
-    db_host = os.getenv('DB_HOST')
-    db_name = os.getenv('DB_NAME')
-    db_user = os.getenv('DB_USER')
-    db_pass = os.getenv('DB_PASSWORD')
-    db_port = os.getenv('DB_PORT', '5432')
-    
+    db_host = os.getenv("DB_HOST")
+    db_name = os.getenv("DB_NAME")
+    db_user = os.getenv("DB_USER")
+    db_pass = os.getenv("DB_PASSWORD")
+    db_port = os.getenv("DB_PORT", "5432")
+
     conn = psycopg2.connect(
-        host=db_host,
-        port=db_port,
-        database=db_name,
-        user=db_user,
-        password=db_pass
+        host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass
     )
     return conn
+
 
 def run_query(query, conn):
     return pd.read_sql_query(query, conn)
 
+
 def generate_monthly_revenue_trend(conn, output_dir):
     print("Generating Monthly Revenue Trend line chart...")
-    query = load_sql_query('running_total_revenue.sql')
+    query = load_sql_query("running_total_revenue.sql")
     df = run_query(query, conn)
     if df.empty:
         print("No revenue data found for monthly trend.")
         return
-    
-    df['revenue_month'] = pd.to_datetime(df['revenue_month'])
-    
+
+    df["revenue_month"] = pd.to_datetime(df["revenue_month"])
+
     plt.figure(figsize=(12, 6))
-    plt.plot(df['revenue_month'], df['monthly_revenue'], marker='o', linewidth=2.5, color='#1f77b4', label='Monthly Revenue')
-    plt.title('Monthly Revenue Trend (Dec 2009 - Dec 2011)', pad=20)
-    plt.xlabel('Month')
-    plt.ylabel('Revenue (£)')
-    plt.grid(True, linestyle='--', alpha=0.6)
-    
+    plt.plot(
+        df["revenue_month"],
+        df["monthly_revenue"],
+        marker="o",
+        linewidth=2.5,
+        color="#1f77b4",
+        label="Monthly Revenue",
+    )
+    plt.title("Monthly Revenue Trend (Dec 2009 - Dec 2011)", pad=20)
+    plt.xlabel("Month")
+    plt.ylabel("Revenue (£)")
+    plt.grid(True, linestyle="--", alpha=0.6)
+
     # Format dates on x-axis
     plt.xticks(rotation=45)
     plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: f"£{x:,.0f}"))
     plt.tight_layout()
-    
-    output_path = os.path.join(output_dir, 'monthly_revenue_trend.png')
+
+    output_path = os.path.join(output_dir, "monthly_revenue_trend.png")
     plt.savefig(output_path, dpi=300)
     plt.close()
     print(f"Saved: {output_path}")
 
+
 def generate_revenue_by_country(conn, output_dir):
     print("Generating Revenue by Country bar chart...")
-    query = load_sql_query('revenue_per_country.sql')
+    query = load_sql_query("revenue_per_country.sql")
     df_all = run_query(query, conn)
     if df_all.empty:
         print("No revenue data found for country bar chart.")
         return
-    
+
     df = df_all.head(10)
     plt.figure(figsize=(12, 6))
-    sns.barplot(x='total_revenue', y='country', data=df, palette='viridis')
-    plt.title('Top 10 Countries by Total Revenue', pad=20)
-    plt.xlabel('Revenue (£)')
-    plt.ylabel('Country')
-    
+    sns.barplot(x="total_revenue", y="country", data=df, palette="viridis")
+    plt.title("Top 10 Countries by Total Revenue", pad=20)
+    plt.xlabel("Revenue (£)")
+    plt.ylabel("Country")
+
     plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: f"£{x:,.0f}"))
     plt.tight_layout()
-    
-    output_path = os.path.join(output_dir, 'revenue_by_country.png')
+
+    output_path = os.path.join(output_dir, "revenue_by_country.png")
     plt.savefig(output_path, dpi=300)
     plt.close()
     print(f"Saved: {output_path}")
+
 
 def generate_product_performance(conn, output_dir):
     print("Generating Product Performance charts...")
     # Query product performance
-    query = load_sql_query('product_units_sold.sql')
+    query = load_sql_query("product_units_sold.sql")
     df = run_query(query, conn)
     if df.empty:
         print("No product performance data found.")
         return
-    
+
     top_5 = df.head(5)
     bottom_5 = df.tail(5)
-    
+
     # Top 5 Products
     plt.figure(figsize=(12, 6))
-    sns.barplot(x='total_units', y='product_name', data=top_5, palette='crest')
-    plt.title('Top 5 Products by Units Sold', pad=20)
-    plt.xlabel('Units Sold')
-    plt.ylabel('Product Name')
+    sns.barplot(x="total_units", y="product_name", data=top_5, palette="crest")
+    plt.title("Top 5 Products by Units Sold", pad=20)
+    plt.xlabel("Units Sold")
+    plt.ylabel("Product Name")
     plt.tight_layout()
-    top_path = os.path.join(output_dir, 'top_5_products.png')
+    top_path = os.path.join(output_dir, "top_5_products.png")
     plt.savefig(top_path, dpi=300)
     plt.close()
     print(f"Saved: {top_path}")
-    
+
     # Bottom 5 Products
     plt.figure(figsize=(12, 6))
-    sns.barplot(x='total_units', y='product_name', data=bottom_5, palette='flare')
-    plt.title('Bottom 5 Products by Units Sold', pad=20)
-    plt.xlabel('Units Sold')
-    plt.ylabel('Product Name')
+    sns.barplot(x="total_units", y="product_name", data=bottom_5, palette="flare")
+    plt.title("Bottom 5 Products by Units Sold", pad=20)
+    plt.xlabel("Units Sold")
+    plt.ylabel("Product Name")
     plt.tight_layout()
-    bottom_path = os.path.join(output_dir, 'bottom_5_products.png')
+    bottom_path = os.path.join(output_dir, "bottom_5_products.png")
     plt.savefig(bottom_path, dpi=300)
     plt.close()
     print(f"Saved: {bottom_path}")
 
+
 def generate_customer_segment_distribution(conn, output_dir):
     print("Generating Customer Segment Distribution pie chart...")
-    query = load_sql_query('customer_segment_distribution.sql')
+    query = load_sql_query("customer_segment_distribution.sql")
     df = run_query(query, conn)
     if df.empty:
         print("No customer segment data found.")
         return
-    
+
     plt.figure(figsize=(8, 8))
-    colors = sns.color_palette('pastel')[0:len(df)]
-    plt.pie(df['count'], labels=df['customer_segment'], autopct='%1.1f%%', startangle=140, colors=colors,
-            textprops={'fontsize': 14}, wedgeprops={'edgecolor': 'w', 'linewidth': 1})
-    plt.title('RFM Customer Segment Distribution', pad=20)
+    colors = sns.color_palette("pastel")[0 : len(df)]
+    plt.pie(
+        df["count"],
+        labels=df["customer_segment"],
+        autopct="%1.1f%%",
+        startangle=140,
+        colors=colors,
+        textprops={"fontsize": 14},
+        wedgeprops={"edgecolor": "w", "linewidth": 1},
+    )
+    plt.title("RFM Customer Segment Distribution", pad=20)
     plt.tight_layout()
-    
-    output_path = os.path.join(output_dir, 'customer_segment_distribution.png')
+
+    output_path = os.path.join(output_dir, "customer_segment_distribution.png")
     plt.savefig(output_path, dpi=300)
     plt.close()
     print(f"Saved: {output_path}")
 
+
 def generate_order_value_distribution(conn, output_dir):
     print("Generating Order Value Distribution histogram...")
-    query = load_sql_query('order_value_distribution.sql')
+    query = load_sql_query("order_value_distribution.sql")
     df_all = run_query(query, conn)
     if df_all.empty:
         print("No order value data found.")
         return
-    df = df_all[df_all['order_value'] < 1000]
+    df = df_all[df_all["order_value"] < 1000]
     if df.empty:
         print("No order value data found.")
         return
-    
+
     plt.figure(figsize=(10, 6))
-    sns.histplot(df['order_value'], bins=40, kde=True, color='#00cc96', edgecolor='#1a1a1a', linewidth=0.8)
-    plt.title('Distribution of Order Values (Completed Orders < £1,000)', pad=20)
-    plt.xlabel('Order Value (£)')
-    plt.ylabel('Frequency')
+    sns.histplot(
+        df["order_value"],
+        bins=40,
+        kde=True,
+        color="#00cc96",
+        edgecolor="#1a1a1a",
+        linewidth=0.8,
+    )
+    plt.title("Distribution of Order Values (Completed Orders < £1,000)", pad=20)
+    plt.xlabel("Order Value (£)")
+    plt.ylabel("Frequency")
     plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: f"£{x:,.0f}"))
     plt.tight_layout()
-    
-    output_path = os.path.join(output_dir, 'order_value_distribution.png')
+
+    output_path = os.path.join(output_dir, "order_value_distribution.png")
     plt.savefig(output_path, dpi=300)
     plt.close()
     print(f"Saved: {output_path}")
 
+
 def generate_revenue_intensity_heatmap(conn, output_dir):
     print("Generating Revenue Intensity Heatmap...")
-    query = load_sql_query('heatmap_revenue.sql')
+    query = load_sql_query("heatmap_revenue.sql")
     df = run_query(query, conn)
     if df.empty:
         print("No revenue summary data found for heatmap.")
         return
-    
-    df['month'] = pd.to_datetime(df['month']).dt.strftime('%Y-%m')
-    
+
+    df["month"] = pd.to_datetime(df["month"]).dt.strftime("%Y-%m")
+
     # Filter for top countries to keep heatmap clean
-    top_countries_query = load_sql_query('revenue_per_country.sql')
+    top_countries_query = load_sql_query("revenue_per_country.sql")
     top_countries_df_all = run_query(top_countries_query, conn)
     top_countries_df = top_countries_df_all.head(10)
-    top_countries = top_countries_df['country'].tolist()
-    
-    df_filtered = df[df['country'].isin(top_countries)]
-    
+    top_countries = top_countries_df["country"].tolist()
+
+    df_filtered = df[df["country"].isin(top_countries)]
+
     # Pivot the data
-    pivot_df = df_filtered.pivot(index='country', columns='month', values='revenue').fillna(0)
-    
+    pivot_df = df_filtered.pivot(
+        index="country", columns="month", values="revenue"
+    ).fillna(0)
+
     # Sort countries by total revenue (so the highest is at the top)
     pivot_df = pivot_df.reindex(top_countries)
-    
+
     plt.figure(figsize=(14, 8))
-    sns.heatmap(pivot_df, cmap='viridis', annot=False, fmt=".0f", cbar_kws={'label': 'Revenue (£)'})
-    plt.title('Country-by-Month Revenue Intensity Heatmap (Top 10 Countries)', pad=20)
-    plt.xlabel('Month')
-    plt.ylabel('Country')
+    sns.heatmap(
+        pivot_df,
+        cmap="viridis",
+        annot=False,
+        fmt=".0f",
+        cbar_kws={"label": "Revenue (£)"},
+    )
+    plt.title("Country-by-Month Revenue Intensity Heatmap (Top 10 Countries)", pad=20)
+    plt.xlabel("Month")
+    plt.ylabel("Country")
     plt.xticks(rotation=45)
     plt.tight_layout()
-    
-    output_path = os.path.join(output_dir, 'revenue_intensity_heatmap.png')
+
+    output_path = os.path.join(output_dir, "revenue_intensity_heatmap.png")
     plt.savefig(output_path, dpi=300)
     plt.close()
     print(f"Saved: {output_path}")
 
+
 def main():
-    output_dir = os.path.join(os.path.dirname(__file__), 'static')
+    output_dir = os.path.join(os.path.dirname(__file__), "static")
     os.makedirs(output_dir, exist_ok=True)
-    
+
     try:
         conn = get_db_connection()
         print("Connected to database successfully.")
-        
+
         generate_monthly_revenue_trend(conn, output_dir)
         generate_revenue_by_country(conn, output_dir)
         generate_product_performance(conn, output_dir)
         generate_customer_segment_distribution(conn, output_dir)
         generate_order_value_distribution(conn, output_dir)
         generate_revenue_intensity_heatmap(conn, output_dir)
-        
+
         conn.close()
         print("Database connection closed. All charts generated successfully!")
-        
+
     except Exception as e:
         print(f"An error occurred during chart generation: {e}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
