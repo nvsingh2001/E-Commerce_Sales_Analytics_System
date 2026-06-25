@@ -1,8 +1,8 @@
 import os
 import sys
 from dotenv import load_dotenv
+from repositories.database_connector import DatabaseConnector
 from platform_commands import (
-    DatabaseConnector,
     RunETLCommand,
     GenerateChartsCommand,
     LaunchDashboardCommand,
