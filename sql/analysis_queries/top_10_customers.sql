@@ -1,10 +1,11 @@
 SELECT
     dc.customer_id,
     dc.country,
-    SUM(fo.revenue) AS lifetime_spend
+    SUM(fo.line_total) AS lifetime_spend
 FROM fact_orders fo
 JOIN dim_customers dc
-    ON fo.customer_key = dc.customer_key
+    ON fo.customer_id = dc.customer_id
+WHERE fo.order_status = 'Completed'
 GROUP BY
     dc.customer_id,
     dc.country
