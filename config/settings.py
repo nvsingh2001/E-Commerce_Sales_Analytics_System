@@ -14,5 +14,5 @@ class Settings:
     DB_USER = os.getenv("DB_USER", "postgres")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
 
-    S3_BUCKET = os.getenv("S3_BUCKET")
+    S3_BUCKET = os.getenv("S3_BUCKET_NAME") or os.getenv("S3_BUCKET")
 
