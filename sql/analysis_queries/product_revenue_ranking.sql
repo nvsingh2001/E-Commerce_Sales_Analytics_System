@@ -1,24 +1,14 @@
 SELECT
-
-    dp.stock_code,
-
-    dp.description,
-
-    SUM(fo.revenue) AS total_revenue,
-
+    dp.product_id,
+    dp.product_name,
+    SUM(fo.line_total) AS total_revenue,
     RANK() OVER (
-
-        ORDER BY SUM(fo.revenue) DESC
-
+        ORDER BY SUM(fo.line_total) DESC
     ) AS revenue_rank
-
 FROM fact_orders fo
-
 JOIN dim_products dp
-    ON fo.product_key = dp.product_key
-
+    ON fo.product_id = dp.product_id
+WHERE fo.order_status = 'Completed'
 GROUP BY
-
-    dp.stock_code,
-
-    dp.description;
+    dp.product_id,
+    dp.product_name;
