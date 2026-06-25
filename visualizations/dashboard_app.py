@@ -53,6 +53,34 @@ def run_query(query):
         st.error(f"Error executing query: {e}")
         return pd.DataFrame()
 
+@st.cache_data
+def get_order_values_cached():
+    db_host = os.getenv('DB_HOST')
+    db_name = os.getenv('DB_NAME')
+    db_user = os.getenv('DB_USER')
+    db_pass = os.getenv('DB_PASSWORD')
+    db_port = os.getenv('DB_PORT', '5432')
+    try:
+        conn_local = psycopg2.connect(
+            host=db_host,
+            port=db_port,
+            database=db_name,
+            user=db_user,
+            password=db_pass
+        )
+        df = pd.read_sql_query("""
+            SELECT order_id, SUM(line_total) as order_value
+            FROM fact_orders
+            WHERE order_status = 'Completed'
+            GROUP BY order_id
+            HAVING SUM(line_total) > 0
+        """, conn_local)
+        conn_local.close()
+        return df
+    except Exception as e:
+        st.error(f"Failed to fetch order values for histogram: {e}")
+        return pd.DataFrame()
+
 st.title("🛍️ E-Commerce Sales Analytics Dashboard")
 st.markdown("---")
 
@@ -258,17 +286,30 @@ with tab_customers:
             st.plotly_chart(fig_cust, use_container_width=True)
             
     st.subheader("Distribution of Order Values")
-    order_val_df = run_query("""
-        SELECT order_id, SUM(line_total) as order_value
-        FROM fact_orders
-        WHERE order_status = 'Completed'
-        GROUP BY order_id
-        HAVING SUM(line_total) > 0 AND SUM(line_total) < 2000 -- Filter outliers for visibility
-    """)
-    if not order_val_df.empty:
-        fig_hist = px.histogram(order_val_df, x='order_value', nbins=50,
-                                labels={'order_value': 'Order Value (£)'},
-                                title="Order Value Distribution (Up to £2,000)",
-                                color_discrete_sequence=['#4B9CD3'])
-        fig_hist.update_layout(template="plotly_dark")
+    order_val_df_all = get_order_values_cached()
+    if not order_val_df_all.empty:
+        max_val = st.slider("Select Maximum Order Value to Display (£)", min_value=200, max_value=5000, value=1000, step=100)
+        # Filter data based on selected slider range
+        order_val_df = order_val_df_all[order_val_df_all['order_value'] <= max_val]
+        
+        fig_hist = px.histogram(
+            order_val_df, 
+            x='order_value', 
+            nbins=40,
+            labels={'order_value': 'Order Value (£)'},
+            title=f"Order Value Distribution (Up to £{max_val:,})",
+            color_discrete_sequence=['#00cc96'],
+            marginal="box"
+        )
+        fig_hist.update_layout(
+            template="plotly_dark",
+            bargap=0.05,
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+        )
+        fig_hist.update_traces(
+            marker_line_color='#1a1a1a', 
+            marker_line_width=1.0,
+            opacity=0.85
+        )
         st.plotly_chart(fig_hist, use_container_width=True)

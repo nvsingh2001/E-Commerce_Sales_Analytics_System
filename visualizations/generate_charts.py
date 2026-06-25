@@ -176,7 +176,7 @@ def generate_order_value_distribution(conn, output_dir):
         FROM fact_orders
         WHERE order_status = 'Completed'
         GROUP BY order_id
-        HAVING SUM(line_total) > 0 AND SUM(line_total) < 2000
+        HAVING SUM(line_total) > 0 AND SUM(line_total) < 1000
     """
     df = run_query(query, conn)
     if df.empty:
@@ -184,8 +184,8 @@ def generate_order_value_distribution(conn, output_dir):
         return
     
     plt.figure(figsize=(10, 6))
-    sns.histplot(df['order_value'], bins=50, kde=True, color='#4b9cd3')
-    plt.title('Distribution of Order Values (Completed Orders < £2,000)', pad=20)
+    sns.histplot(df['order_value'], bins=40, kde=True, color='#00cc96', edgecolor='#1a1a1a', linewidth=0.8)
+    plt.title('Distribution of Order Values (Completed Orders < £1,000)', pad=20)
     plt.xlabel('Order Value (£)')
     plt.ylabel('Frequency')
     plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: f"£{x:,.0f}"))
