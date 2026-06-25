@@ -21,6 +21,11 @@ plt.rcParams.update({
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(env_path)
 
+def load_sql_query(filename):
+    sql_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'sql', 'analysis_queries', filename)
+    with open(sql_path, 'r') as f:
+        return f.read()
+
 def get_db_connection():
     db_host = os.getenv('DB_HOST')
     db_name = os.getenv('DB_NAME')
@@ -42,21 +47,16 @@ def run_query(query, conn):
 
 def generate_monthly_revenue_trend(conn, output_dir):
     print("Generating Monthly Revenue Trend line chart...")
-    query = """
-        SELECT month, SUM(total_revenue) as revenue
-        FROM analytics.revenue_summary
-        GROUP BY month
-        ORDER BY month
-    """
+    query = load_sql_query('running_total_revenue.sql')
     df = run_query(query, conn)
     if df.empty:
         print("No revenue data found for monthly trend.")
         return
     
-    df['month'] = pd.to_datetime(df['month'])
+    df['revenue_month'] = pd.to_datetime(df['revenue_month'])
     
     plt.figure(figsize=(12, 6))
-    plt.plot(df['month'], df['revenue'], marker='o', linewidth=2.5, color='#1f77b4', label='Monthly Revenue')
+    plt.plot(df['revenue_month'], df['monthly_revenue'], marker='o', linewidth=2.5, color='#1f77b4', label='Monthly Revenue')
     plt.title('Monthly Revenue Trend (Dec 2009 - Dec 2011)', pad=20)
     plt.xlabel('Month')
     plt.ylabel('Revenue (£)')
@@ -74,20 +74,15 @@ def generate_monthly_revenue_trend(conn, output_dir):
 
 def generate_revenue_by_country(conn, output_dir):
     print("Generating Revenue by Country bar chart...")
-    query = """
-        SELECT country, SUM(total_revenue) as revenue
-        FROM analytics.revenue_summary
-        GROUP BY country
-        ORDER BY revenue DESC
-        LIMIT 10
-    """
-    df = run_query(query, conn)
-    if df.empty:
+    query = load_sql_query('revenue_per_country.sql')
+    df_all = run_query(query, conn)
+    if df_all.empty:
         print("No revenue data found for country bar chart.")
         return
     
+    df = df_all.head(10)
     plt.figure(figsize=(12, 6))
-    sns.barplot(x='revenue', y='country', data=df, palette='viridis')
+    sns.barplot(x='total_revenue', y='country', data=df, palette='viridis')
     plt.title('Top 10 Countries by Total Revenue', pad=20)
     plt.xlabel('Revenue (£)')
     plt.ylabel('Country')
