@@ -4,19 +4,10 @@ from pyspark.sql import functions as F
 
 
 class RFMSegmenter:
-    """
-    Computes Recency, Frequency, and Monetary scores per customer
-    and assigns them to customer segments.
-    """
-
     def __init__(self, logger: logging.Logger):
         self.logger = logger
 
     def compute_segments(self, orders_df: DataFrame) -> DataFrame:
-        """
-        Calculates RFM scores and returns a DataFrame with:
-        customer_id, customer_segment
-        """
         self.logger.info("Computing RFM customer segments...")
 
         completed_orders = orders_df.filter(
@@ -43,7 +34,6 @@ class RFMSegmenter:
             F.sum(F.col("quantity") * F.col("unit_price")).alias("monetary"),
         )
 
-        # Calculate recency in days
         customer_metrics = customer_aggregates.withColumn(
             "recency_days",
             F.datediff(F.lit(max_dataset_date), F.col("last_order_date")),

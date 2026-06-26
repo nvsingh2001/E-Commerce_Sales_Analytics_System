@@ -2,7 +2,7 @@ SELECT
     dp.product_id,
     dp.product_name,
     SUM(fo.line_total) AS total_revenue,
-    RANK() OVER (
+    DENSE_RANK() OVER (
         ORDER BY SUM(fo.line_total) DESC
     ) AS revenue_rank
 FROM fact_orders fo
