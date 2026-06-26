@@ -20,7 +20,7 @@ spark-warehouse/
 datasets/
 
 # Compiled documentation and outputs (kept offline)
-documentation/
+GEMINI.md
 .agents/
 screenshots/
 testing/test_cases.xlsx
