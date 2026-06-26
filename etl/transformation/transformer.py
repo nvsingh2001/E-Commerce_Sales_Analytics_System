@@ -12,7 +12,9 @@ from config.settings import Settings
 
 
 class DataTransformer:
-    def __init__(self, logger: logging.Logger, validation_rules=None, rfm_segmenter=None):
+    def __init__(
+        self, logger: logging.Logger, validation_rules=None, rfm_segmenter=None
+    ):
         self.logger = logger
         self.rfm_segmenter = rfm_segmenter or RFMSegmenter(logger)
         self.validation_rules = validation_rules or [
@@ -41,7 +43,11 @@ class DataTransformer:
             ).otherwise(F.initcap(F.trim(F.col("description")))),
         )
 
-        return {"customers": clean_customers, "products": clean_products, "orders": orders}
+        return {
+            "customers": clean_customers,
+            "products": clean_products,
+            "orders": orders,
+        }
 
     def validate_data_quality(self, orders_df: DataFrame) -> tuple:
         self.logger.info("Executing Data Quality Validation Rules...")
@@ -88,7 +94,9 @@ class DataTransformer:
         return clean_orders, duplicate_orders
 
     def build_reporting_tables(self, cleaned_dfs: dict) -> dict:
-        self.logger.info("Building dimensional fact and aggregated analytics DataFrames...")
+        self.logger.info(
+            "Building dimensional fact and aggregated analytics DataFrames..."
+        )
 
         customers = cleaned_dfs["customers"]
         products = cleaned_dfs["products"]
@@ -146,16 +154,16 @@ class DataTransformer:
         dim_customers = (
             dim_customers.withColumn("row_num", F.row_number().over(w_cust_country))
             .filter(F.col("row_num") == 1)
-            .select(
-                F.col("customer_id"), F.col("country"), F.col("customer_segment")
-            )
+            .select(F.col("customer_id"), F.col("country"), F.col("customer_segment"))
         )
 
         completed_orders = enriched_orders.filter(F.col("order_status") == "Completed")
 
         revenue_summary = (
             completed_orders.join(dim_customers, "customer_id", "inner")
-            .withColumn("month", F.date_trunc("month", F.col("order_date")).cast("date"))
+            .withColumn(
+                "month", F.date_trunc("month", F.col("order_date")).cast("date")
+            )
             .groupBy("country", "month")
             .agg(
                 F.countDistinct("invoice_no").alias("total_orders"),
@@ -229,9 +237,7 @@ class DataTransformer:
             )
         )
 
-        window_rank = Window.partitionBy("month").orderBy(
-            F.col("total_revenue").desc()
-        )
+        window_rank = Window.partitionBy("month").orderBy(F.col("total_revenue").desc())
         product_performance = product_performance.withColumn(
             "overall_rank", F.dense_rank().over(window_rank)
         ).select(
