@@ -5,107 +5,53 @@ from platform_commands import PlatformCommand
 
 
 class PlatformControlCenter:
-    """
-    Coordinates and handles the platform UI layers (CLI arguments and console menu loops).
-    Adheres to the Single Responsibility Principle (SRP) by delegating execution to injected commands.
-    """
-
     def __init__(self, db_connector: DatabaseConnector, commands: dict):
         self._db_connector = db_connector
         self._commands = commands
 
-    def print_banner(self) -> None:
-        """Prints the system header banner."""
-        banner = """
-====================================================================
- 🛍️  E-COMMERCE SALES ANALYTICS SYSTEM - PLATFORM CONTROL CENTER
-====================================================================
-        """
-        print(banner)
-
-    def execute_command(self, cmd_key: str) -> None:
-        """Retrieves and executes a command strategy from the injected command list."""
-        command = self._commands.get(cmd_key)
-        if command:
-            command.execute()
-        else:
-            print(f"❌ Command key '{cmd_key}' is not recognized.")
-
-    def run_interactive_menu(self) -> None:
-        """Launches the CLI interactive console selection menu."""
-        while True:
-            self.print_banner()
-            print("Please choose an operation:")
-            print("  1. Run End-to-End PySpark ETL Pipeline (Extract -> Clean -> Load)")
-            print("  2. Regenerate Static Charts (Matplotlib & Seaborn)")
-            print("  3. Launch Streamlit Interactive Dashboard (Web UI)")
-            print("  4. View Database Health & Statistics")
-            print("  5. Run Full Analytics Suite (Pipeline + Regenerate Charts)")
-            print("  6. Exit")
-            print("-" * 60)
-
-            choice = input("Enter choice (1-6): ").strip()
-
-            if choice == "1":
-                self.execute_command("etl")
-            elif choice == "2":
-                self.execute_command("charts")
-            elif choice == "3":
-                self.execute_command("dashboard")
-            elif choice == "4":
-                self.execute_command("stats")
-            elif choice == "5":
-                self.execute_command("etl")
-                self.execute_command("charts")
-            elif choice == "6":
-                print("\nExiting Platform Control Center. Goodbye!")
-                break
-            else:
-                print("\nInvalid choice. Please enter a number between 1 and 6.")
-
-            input("\nPress Enter to return to the menu...")
-
-    def parse_and_run(self, args_list: list) -> None:
-        """Parses Command Line Arguments and executes matched tasks."""
+    def get_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(
-            description="E-Commerce Sales Analytics Platform CLI Manager"
+            description="BridgeLabz E-Commerce Sales Analytics Platform - Control Center"
         )
         parser.add_argument(
-            "--etl", action="store_true", help="Run the end-to-end PySpark ETL pipeline"
+            "action",
+            choices=list(self._commands.keys()),
+            help="The platform action to perform (etl, charts, dashboard, stats)",
         )
-        parser.add_argument(
-            "--charts",
-            action="store_true",
-            help="Regenerate static Seaborn/Matplotlib charts",
-        )
-        parser.add_argument(
-            "--dashboard",
-            action="store_true",
-            help="Start the Streamlit dashboard server",
-        )
-        parser.add_argument(
-            "--stats",
-            action="store_true",
-            help="View RDS database row counts and metrics",
-        )
-        parser.add_argument(
-            "--all",
-            action="store_true",
-            help="Run ETL pipeline and regenerate static charts",
-        )
+        return parser
 
-        args = parser.parse_args(args_list)
+    def check_db_health(self) -> bool:
+        print("Checking target database health...")
+        conn = self._db_connector.get_connection()
+        if conn is None:
+            print(
+                "CRITICAL: Failed to connect to the AWS RDS database. Is the instance running?"
+            )
+            return False
+        conn.close()
+        print("Database connection verified.")
+        return True
 
-        # If no arguments are provided, launch the interactive menu loop
-        if not any(vars(args).values()):
-            self.run_interactive_menu()
-        else:
-            self.print_banner()
-            if args.stats:
-                self.execute_command("stats")
-            if args.etl or args.all:
-                self.execute_command("etl")
-            if args.charts or args.all:
-                self.execute_command("charts")
-            if args.dashboard:
-                self.execute_command("dashboard")
+    def parse_and_run(self, args: list) -> None:
+        parser = self.get_parser()
+        if not args:
+            parser.print_help()
+            sys.exit(1)
+
+        parsed_args = parser.parse_args(args)
+        action = parsed_args.action
+
+        if action not in self._commands:
+            print(f"Error: Unknown action '{action}'")
+            parser.print_help()
+            sys.exit(1)
+
+        if not self.check_db_health():
+            sys.exit(1)
+
+        command: PlatformCommand = self._commands[action]
+        try:
+            command.execute()
+        except Exception as e:
+            print(f"\nPlatform Execution Failed during '{action}': {e}")
+            sys.exit(1)

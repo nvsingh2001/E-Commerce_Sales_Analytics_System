@@ -1,143 +1,100 @@
+import os
 import subprocess
+import shutil
 from abc import ABC, abstractmethod
 from repositories.database_connector import DatabaseConnector
+from utils.sql_loader import SQLLoader
+from config.settings import Settings
 
 
 class PlatformCommand(ABC):
-    """
-    Abstract Command Interface (Command Design Pattern).
-    Defines the execute method.
-    """
-
     @abstractmethod
     def execute(self) -> None:
-        """Executes the specific platform command."""
         pass
 
 
 class RunETLCommand(PlatformCommand):
-    """
-    Encapsulates PySpark ETL Pipeline execution.
-    """
-
     def __init__(self, db_connector: DatabaseConnector):
         self._db_connector = db_connector
 
     def execute(self) -> None:
-        print("\n🚀 Starting PySpark ETL Pipeline Stage...")
-        print("Initializing Spark session and loading datasets...")
-        try:
-            # Dynamic import to avoid heavy Spark overhead at CLI startup
-            from etl.pipeline import EcommerceSalesAnalyticsPipeline
+        from etl.pipeline import EcommerceSalesAnalyticsPipeline
 
-            # Run the pipeline (which internally connects to PostgreSQL/S3)
-            pipeline = EcommerceSalesAnalyticsPipeline()
-            pipeline.run()
-            print("\n✅ PySpark ETL Pipeline execution completed successfully!")
-        except Exception as e:
-            print(f"\n❌ PySpark ETL Pipeline failed: {e}")
+        print("\nStarting the ETL Pipeline execution...")
+        pipeline = EcommerceSalesAnalyticsPipeline()
+        pipeline.run()
+        print("ETL Pipeline completed successfully.")
 
 
 class GenerateChartsCommand(PlatformCommand):
-    """
-    Encapsulates static chart generation strategy.
-    """
-
     def __init__(self, db_connector: DatabaseConnector):
         self._db_connector = db_connector
 
     def execute(self) -> None:
-        print("\n🎨 Generating Static Charts (Matplotlib/Seaborn)...")
-        try:
-            from visualizations.generate_charts import main as generate_main
+        from visualizations.generate_charts import main as generate_main
 
-            generate_main()
-            print(
-                "\n✅ All static charts regenerated successfully in 'visualizations/static/'!"
-            )
-        except Exception as e:
-            print(f"\n❌ Static chart generation failed: {e}")
+        print("\nGenerating static visualization charts...")
+        generate_main()
+        print("Charts generation completed. Check 'visualizations/static/'")
 
 
 class LaunchDashboardCommand(PlatformCommand):
-    """
-    Encapsulates Streamlit interactive dashboard launch.
-    """
-
     def execute(self) -> None:
-        print("\n🖥️ Starting Streamlit Interactive Dashboard Server...")
-        print("Dashboard will load at: http://localhost:8501")
-        try:
-            # Launch Streamlit as a subprocess using virtual environment binary
-            subprocess.run(
-                [".venv/bin/streamlit", "run", "visualizations/dashboard_app.py"]
-            )
-        except KeyboardInterrupt:
-            print("\nStreamlit server stopped.")
-        except Exception as e:
-            print(f"\n❌ Failed to launch Streamlit: {e}")
+        print("\nLaunching Streamlit Interactive Dashboard...")
+        streamlit_executable = shutil.which("streamlit") or ".venv/bin/streamlit"
+        
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.getcwd()
+        
+        subprocess.run(
+            [streamlit_executable, "run", "visualizations/dashboard_app.py"],
+            env=env
+        )
 
 
 class CheckStatsCommand(PlatformCommand):
-    """
-    Encapsulates checking of database table row counts and summary statistics.
-    """
-
     def __init__(self, db_connector: DatabaseConnector):
         self._db_connector = db_connector
 
     def execute(self) -> None:
-        print("\n🔍 Checking Database Health & System Statistics...")
+        print("\nChecking Target Database Row Counts and Metrics...")
+
         conn = self._db_connector.get_connection()
         if conn is None:
-            print(
-                "❌ Database Status: OFFLINE (Could not connect to AWS RDS PostgreSQL)"
-            )
+            print("Failed to connect to the database to check stats.")
             return
 
-        print("✅ Database Status: ONLINE (Connected to AWS RDS PostgreSQL)")
-        cur = conn.cursor()
+        try:
+            cursor = conn.cursor()
+            print("\n--- Current Table Row Counts ---")
 
-        tables = [
-            ("dim_customers", "Dimension - Customers"),
-            ("dim_products", "Dimension - Products"),
-            ("fact_orders", "Fact - Orders"),
-            ("analytics.revenue_summary", "Reporting - Revenue Summary"),
-            ("analytics.customer_retention", "Reporting - Customer Retention"),
-            ("analytics.product_performance", "Reporting - Product Performance"),
-        ]
+            for table_name, table_label in Settings.TABLE_LABELS.items():
+                try:
+                    cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                    count = cursor.fetchone()[0]
+                    print(f"{table_label} ({table_name}): {count} rows")
+                except Exception as e:
+                    print(f"{table_label} ({table_name}): Error counting rows - {e}")
+                    conn.rollback()
 
-        print("\n📊 Current Database Row Counts:")
-        print("-" * 60)
-        for table_name, label in tables:
+            print("\n--- High-Level Business Metrics ---")
             try:
-                cur.execute(f"SELECT COUNT(*) FROM {table_name}")
-                count = cur.fetchone()[0]
-                print(f"  • {label:<35} : {count:,} rows")
+                revenue_query = SQLLoader.load_query("total_revenue.sql")
+                cursor.execute(revenue_query)
+                total_rev = cursor.fetchone()[0] or 0.0
+                print(f"Total Completed Revenue: £{total_rev:,.2f}")
+
+                orders_query = SQLLoader.load_query("total_orders.sql")
+                cursor.execute(orders_query)
+                total_orders = cursor.fetchone()[0] or 0
+                print(f"Total Completed Orders: {total_orders:,}")
+
             except Exception as e:
-                print(f"  • {label:<35} : Error reading table ({e})")
+                print(f"Error computing business metrics: {e}")
                 conn.rollback()
 
-        print("-" * 60)
-
-        try:
-            cur.execute(
-                "SELECT SUM(line_total) FROM fact_orders WHERE order_status = 'Completed'"
-            )
-            total_rev = cur.fetchone()[0] or 0.0
-            cur.execute(
-                "SELECT COUNT(DISTINCT order_id) FROM fact_orders WHERE order_status = 'Completed'"
-            )
-            total_orders = cur.fetchone()[0] or 0
-            aov = float(total_rev) / total_orders if total_orders > 0 else 0.0
-
-            print(f"💡 Key Metrics in RDS:")
-            print(f"  • Total Revenue      : £{float(total_rev):,.2f}")
-            print(f"  • Total Orders       : {total_orders:,}")
-            print(f"  • Avg Order Value    : £{aov:,.2f}")
+            cursor.close()
         except Exception as e:
-            conn.rollback()
-
-        cur.close()
-        conn.close()
-        print("=" * 60)
+            print(f"An unexpected error occurred while checking stats: {e}")
+        finally:
+            conn.close()

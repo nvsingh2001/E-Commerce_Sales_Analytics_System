@@ -1,17 +1,15 @@
 import os
 import streamlit as st
 import pandas as pd
-import psycopg2
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 from abc import ABC, abstractmethod
-from dotenv import load_dotenv
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from repositories.database_connector import DatabaseConnector
+from utils.sql_loader import SQLLoader
+from config.settings import Settings
 
-# Set page config
+
 st.set_page_config(
     page_title="E-Commerce Sales Analytics Dashboard",
     page_icon="🛍️",
@@ -19,26 +17,15 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Load environment variables
-env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
-load_dotenv(env_path)
-
-def load_sql_query(filename):
-    """Utility to load external SQL query files."""
-    sql_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'sql', 'analysis_queries', filename)
-    with open(sql_path, 'r') as f:
-        return f.read()
-
 
 @st.cache_data
 def get_order_values_cached():
-    """Fetches all order values once and caches them to speed up interactive filtering."""
     db_connector = DatabaseConnector()
     conn_local = db_connector.get_connection()
     if conn_local is None:
         return pd.DataFrame()
     try:
-        query = load_sql_query("order_value_distribution.sql")
+        query = SQLLoader.load_query("order_value_distribution.sql")
         df = pd.read_sql_query(query, conn_local)
         conn_local.close()
         return df
@@ -48,20 +35,15 @@ def get_order_values_cached():
 
 
 class DashboardTab(ABC):
-    """
-    Abstract Component class representing a Tab in the interactive Dashboard.
-    """
     def __init__(self, name: str, icon_label: str):
         self.name = name
         self.icon_label = icon_label
 
     @abstractmethod
     def render(self, conn) -> None:
-        """Renders the components within the Streamlit tab."""
         pass
 
     def run_query(self, query: str, conn) -> pd.DataFrame:
-        """Executes database queries."""
         try:
             return pd.read_sql_query(query, conn)
         except Exception as e:
@@ -70,7 +52,6 @@ class DashboardTab(ABC):
 
 
 class RevenueTrendsTab(DashboardTab):
-    """Renders revenue trend charts and heatmaps."""
     def __init__(self):
         super().__init__("Revenue Trends", "📈 Revenue Trends")
 
@@ -79,7 +60,7 @@ class RevenueTrendsTab(DashboardTab):
 
         with col_t1:
             st.subheader("Monthly Revenue Trend")
-            trend_query = load_sql_query("running_total_revenue.sql")
+            trend_query = SQLLoader.load_query("running_total_revenue.sql")
             trend_df = self.run_query(trend_query, conn)
             if not trend_df.empty:
                 trend_df["revenue_month"] = pd.to_datetime(trend_df["revenue_month"])
@@ -96,7 +77,7 @@ class RevenueTrendsTab(DashboardTab):
 
         with col_t2:
             st.subheader("Revenue by Country")
-            country_query = load_sql_query("revenue_per_country.sql")
+            country_query = SQLLoader.load_query("revenue_per_country.sql")
             country_df_all = self.run_query(country_query, conn)
             if not country_df_all.empty:
                 country_df = country_df_all.head(10)
@@ -113,14 +94,19 @@ class RevenueTrendsTab(DashboardTab):
                 st.plotly_chart(fig_country, use_container_width=True)
 
         st.subheader("Country-by-Month Revenue Intensity Heatmap")
-        heatmap_query = load_sql_query("heatmap_revenue.sql")
+        heatmap_query = SQLLoader.load_query("heatmap_revenue.sql")
         heatmap_raw = self.run_query(heatmap_query, conn)
         if not heatmap_raw.empty:
-            heatmap_raw["month"] = pd.to_datetime(heatmap_raw["month"]).dt.strftime("%Y-%m")
+            heatmap_raw["month"] = pd.to_datetime(heatmap_raw["month"]).dt.strftime(
+                "%Y-%m"
+            )
             heatmap_raw["revenue"] = heatmap_raw["revenue"].astype(float)
 
             top_countries = (
-                heatmap_raw.groupby("country")["revenue"].sum().nlargest(10).index.tolist()
+                heatmap_raw.groupby("country")["revenue"]
+                .sum()
+                .nlargest(10)
+                .index.tolist()
             )
             heatmap_filtered = heatmap_raw[heatmap_raw["country"].isin(top_countries)]
 
@@ -146,7 +132,6 @@ class RevenueTrendsTab(DashboardTab):
 
 
 class ProductPerformanceTab(DashboardTab):
-    """Renders product-specific rankings and sales metrics."""
     def __init__(self):
         super().__init__("Product Performance", "📦 Product Performance")
 
@@ -154,12 +139,16 @@ class ProductPerformanceTab(DashboardTab):
         st.subheader("Top and Bottom 5 Products by Units Sold")
         col_p1, col_p2 = st.columns(2)
 
-        prod_perf_query = load_sql_query("product_units_sold.sql")
+        prod_perf_query = SQLLoader.load_query("product_units_sold.sql")
         prod_perf_df = self.run_query(prod_perf_query, conn)
 
         if not prod_perf_df.empty:
-            top_prod = prod_perf_df.sort_values(by="total_units", ascending=False).head(5)
-            bottom_prod = prod_perf_df.sort_values(by="total_units", ascending=True).head(5)
+            top_prod = prod_perf_df.sort_values(by="total_units", ascending=False).head(
+                5
+            )
+            bottom_prod = prod_perf_df.sort_values(
+                by="total_units", ascending=True
+            ).head(5)
 
             with col_p1:
                 fig_top = px.bar(
@@ -194,7 +183,7 @@ class ProductPerformanceTab(DashboardTab):
                 st.plotly_chart(fig_bottom, use_container_width=True)
 
         st.subheader("Overall Product Revenue Rankings (Top 50)")
-        rank_query = load_sql_query("product_revenue_ranking.sql")
+        rank_query = SQLLoader.load_query("product_revenue_ranking.sql")
         rank_df_all = self.run_query(rank_query, conn)
         if not rank_df_all.empty:
             rank_df = rank_df_all.head(50)
@@ -203,7 +192,6 @@ class ProductPerformanceTab(DashboardTab):
 
 
 class CustomerAnalysisTab(DashboardTab):
-    """Renders customer segments, LTV, and order value distributions."""
     def __init__(self):
         super().__init__("Customer Analysis", "👥 Customer Analysis")
 
@@ -212,7 +200,7 @@ class CustomerAnalysisTab(DashboardTab):
 
         with col_c1:
             st.subheader("Customer Segment Distribution")
-            segment_query = load_sql_query("customer_segment_distribution.sql")
+            segment_query = SQLLoader.load_query("customer_segment_distribution.sql")
             segment_df = self.run_query(segment_query, conn)
             if not segment_df.empty:
                 fig_segment = px.pie(
@@ -228,7 +216,7 @@ class CustomerAnalysisTab(DashboardTab):
 
         with col_c2:
             st.subheader("Top 10 Customers by Lifetime Spend")
-            top_cust_query = load_sql_query("top_10_customers.sql")
+            top_cust_query = SQLLoader.load_query("top_10_customers.sql")
             top_cust_df = self.run_query(top_cust_query, conn)
             if not top_cust_df.empty:
                 top_cust_df["customer_id"] = top_cust_df["customer_id"].astype(str)
@@ -281,85 +269,93 @@ class CustomerAnalysisTab(DashboardTab):
 
 
 class PlatformManagerTab(DashboardTab):
-    """Renders the administrative control panel for orchestrating operations."""
     def __init__(self):
         super().__init__("Platform Manager", "🎛️ Platform Manager")
 
     def render(self, conn) -> None:
         st.subheader("🎛️ Data Platform Control Panel")
-        st.markdown("Manage and monitor the E-Commerce analytics pipeline and RDS data layer.")
-        
+        st.markdown(
+            "Manage and monitor the E-Commerce analytics pipeline and RDS data layer."
+        )
+
         col_p1, col_p2 = st.columns(2)
-        
+
         with col_p1:
             st.markdown("### 📊 Database Table Overview")
             table_to_preview = st.selectbox(
-                "Select Table to Preview",
-                [
-                    "dim_customers", 
-                    "dim_products", 
-                    "fact_orders", 
-                    "analytics.revenue_summary", 
-                    "analytics.customer_retention", 
-                    "analytics.product_performance"
-                ]
+                "Select Table to Preview", list(Settings.TABLE_NAMES.values())
             )
-            preview_limit = st.slider("Rows to Preview", min_value=5, max_value=50, value=10)
-            
+            preview_limit = st.slider(
+                "Rows to Preview", min_value=5, max_value=50, value=10
+            )
+
             if st.button("Preview Table Data"):
-                preview_df = self.run_query(f"SELECT * FROM {table_to_preview} LIMIT {preview_limit}", conn)
-                if not preview_df.empty:
-                    st.dataframe(preview_df, use_container_width=True)
+                allowed_tables = list(Settings.TABLE_NAMES.values())
+                if table_to_preview in allowed_tables:
+                    preview_df = self.run_query(
+                        f"SELECT * FROM {table_to_preview} LIMIT {int(preview_limit)}",
+                        conn,
+                    )
+                    if not preview_df.empty:
+                        st.dataframe(preview_df, use_container_width=True)
+                    else:
+                        st.warning("Table is empty or could not be queried.")
                 else:
-                    st.warning("Table is empty or could not be queried.")
-                    
+                    st.error("Invalid table selected.")
+
         with col_p2:
             st.markdown("### ⚙️ Pipeline Control Operations")
-            st.info("Initiate pipeline runs or regenerate analytical visual reporting assets.")
-            
+            st.info(
+                "Initiate pipeline runs or regenerate analytical visual reporting assets."
+            )
+
             if st.button("🚀 Trigger PySpark ETL Pipeline Run"):
-                with st.spinner("Executing ETL Pipeline (Extract -> Transform -> Load)... This may take several minutes."):
+                with st.spinner(
+                    "Executing ETL Pipeline (Extract -> Transform -> Load)... This may take several minutes."
+                ):
                     try:
                         st.cache_data.clear()
                         from etl.pipeline import EcommerceSalesAnalyticsPipeline
+
                         pipeline = EcommerceSalesAnalyticsPipeline()
                         pipeline.run()
-                        st.success("ETL Pipeline completed successfully! RDS tables updated.")
+                        st.success(
+                            "ETL Pipeline completed successfully! RDS tables updated."
+                        )
                         st.rerun()
                     except Exception as e:
                         st.error(f"ETL Pipeline execution failed: {e}")
-                        
+
             if st.button("🎨 Regenerate Static Report Charts"):
                 with st.spinner("Generating static charts (Matplotlib/Seaborn)..."):
                     try:
                         from visualizations.generate_charts import main as generate_main
+
                         generate_main()
-                        st.success("All static charts generated successfully in 'visualizations/static/'!")
+                        st.success(
+                            "All static charts generated successfully in 'visualizations/static/'!"
+                        )
                     except Exception as e:
                         st.error(f"Failed to generate static charts: {e}")
 
 
 class ECommerceDashboardPortal:
-    """
-    Main Orchestrator for the Streamlit dashboard application.
-    Integrates DB connection and tab routing with constructor-injected components.
-    """
     def __init__(self, db_connector: DatabaseConnector, tabs: list):
         self._db_connector = db_connector
         self._tabs = tabs
 
     def run(self) -> None:
-        """Boots the dashboard application."""
         conn = self._db_connector.get_connection()
         if conn is None:
-            st.warning("Database connection is offline. Please check your AWS RDS settings.")
+            st.warning(
+                "Database connection is offline. Please check your AWS RDS settings."
+            )
             st.stop()
 
         st.title("🛍️ E-Commerce Sales Analytics Dashboard")
         st.markdown("---")
 
-        # Load KPIs
-        kpi_query = load_sql_query("kpi_metrics.sql")
+        kpi_query = SQLLoader.load_query("kpi_metrics.sql")
         try:
             kpi_df = pd.read_sql_query(kpi_query, conn)
         except Exception as e:
@@ -385,7 +381,6 @@ class ECommerceDashboardPortal:
 
         st.markdown("### ")
 
-        # Routing tabs
         tab_names = [tab.icon_label for tab in self._tabs]
         rendered_tabs = st.tabs(tab_names)
 
@@ -393,7 +388,6 @@ class ECommerceDashboardPortal:
             with rendered_tab:
                 tab_obj.render(conn)
 
-        # Close database connection when stream completes
         conn.close()
 
 
@@ -403,11 +397,11 @@ def main():
         RevenueTrendsTab(),
         ProductPerformanceTab(),
         CustomerAnalysisTab(),
-        PlatformManagerTab()
+        PlatformManagerTab(),
     ]
     portal = ECommerceDashboardPortal(db_connector, tabs)
     portal.run()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

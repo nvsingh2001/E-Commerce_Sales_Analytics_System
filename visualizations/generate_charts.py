@@ -1,12 +1,10 @@
 import os
-import sys
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from abc import ABC, abstractmethod
-from dotenv import load_dotenv
+from utils.sql_loader import SQLLoader
+
 
 sns.set_theme(style="whitegrid")
 plt.rcParams.update(
@@ -21,46 +19,26 @@ plt.rcParams.update(
     }
 )
 
-env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
-load_dotenv(env_path)
-
-
-def load_sql_query(filename):
-    """Utility to load external SQL query files."""
-    sql_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "sql", "analysis_queries", filename
-    )
-    with open(sql_path, "r") as f:
-        return f.read()
-
 
 class BaseChart(ABC):
-    """
-    Abstract Strategy class representing a static chart generator.
-    """
-
     def __init__(self, name: str):
         self.name = name
 
     @abstractmethod
     def generate(self, conn, output_dir: str) -> None:
-        """Queries database and generates the target visualization."""
         pass
 
     def run_query(self, query: str, conn) -> pd.DataFrame:
-        """Executes query and returns DataFrame."""
         return pd.read_sql_query(query, conn)
 
 
 class MonthlyRevenueTrendChart(BaseChart):
-    """Generates monthly revenue line chart."""
-
     def __init__(self):
         super().__init__("Monthly Revenue Trend")
 
     def generate(self, conn, output_dir: str) -> None:
         print(f"Generating {self.name} line chart...")
-        query = load_sql_query("running_total_revenue.sql")
+        query = SQLLoader.load_query("running_total_revenue.sql")
         df = self.run_query(query, conn)
         if df.empty:
             print("No revenue data found for monthly trend.")
@@ -95,14 +73,12 @@ class MonthlyRevenueTrendChart(BaseChart):
 
 
 class RevenueByCountryChart(BaseChart):
-    """Generates revenue by country bar chart."""
-
     def __init__(self):
         super().__init__("Revenue by Country")
 
     def generate(self, conn, output_dir: str) -> None:
         print(f"Generating {self.name} bar chart...")
-        query = load_sql_query("revenue_per_country.sql")
+        query = SQLLoader.load_query("revenue_per_country.sql")
         df_all = self.run_query(query, conn)
         if df_all.empty:
             print("No revenue data found for country bar chart.")
@@ -127,14 +103,12 @@ class RevenueByCountryChart(BaseChart):
 
 
 class ProductPerformanceCharts(BaseChart):
-    """Generates top and bottom selling product bar charts."""
-
     def __init__(self):
         super().__init__("Product Performance")
 
     def generate(self, conn, output_dir: str) -> None:
         print(f"Generating {self.name} charts...")
-        query = load_sql_query("product_units_sold.sql")
+        query = SQLLoader.load_query("product_units_sold.sql")
         df = self.run_query(query, conn)
         if df.empty:
             print("No product performance data found.")
@@ -143,7 +117,6 @@ class ProductPerformanceCharts(BaseChart):
         top_5 = df.sort_values(by="total_units", ascending=False).head(5)
         bottom_5 = df.sort_values(by="total_units", ascending=True).head(5)
 
-        # Top 5 Products
         plt.figure(figsize=(12, 6))
         sns.barplot(x="total_units", y="product_name", data=top_5, palette="crest")
         plt.title("Top 5 Products by Units Sold", pad=20)
@@ -155,7 +128,6 @@ class ProductPerformanceCharts(BaseChart):
         plt.close()
         print(f"Saved: {top_path}")
 
-        # Bottom 5 Products
         plt.figure(figsize=(12, 6))
         sns.barplot(x="total_units", y="product_name", data=bottom_5, palette="flare")
         plt.title("Bottom 5 Products by Units Sold", pad=20)
@@ -169,14 +141,12 @@ class ProductPerformanceCharts(BaseChart):
 
 
 class CustomerSegmentDistributionChart(BaseChart):
-    """Generates customer RFM segment pie chart."""
-
     def __init__(self):
         super().__init__("Customer Segment Distribution")
 
     def generate(self, conn, output_dir: str) -> None:
         print(f"Generating {self.name} pie chart...")
-        query = load_sql_query("customer_segment_distribution.sql")
+        query = SQLLoader.load_query("customer_segment_distribution.sql")
         df = self.run_query(query, conn)
         if df.empty:
             print("No customer segment data found.")
@@ -203,14 +173,12 @@ class CustomerSegmentDistributionChart(BaseChart):
 
 
 class OrderValueDistributionChart(BaseChart):
-    """Generates order value distribution histogram."""
-
     def __init__(self):
         super().__init__("Order Value Distribution")
 
     def generate(self, conn, output_dir: str) -> None:
         print(f"Generating {self.name} histogram...")
-        query = load_sql_query("order_value_distribution.sql")
+        query = SQLLoader.load_query("order_value_distribution.sql")
         df_all = self.run_query(query, conn)
         if df_all.empty:
             print("No order value data found.")
@@ -245,14 +213,12 @@ class OrderValueDistributionChart(BaseChart):
 
 
 class RevenueIntensityHeatmapChart(BaseChart):
-    """Generates country-by-month revenue intensity heatmap."""
-
     def __init__(self):
         super().__init__("Revenue Intensity Heatmap")
 
     def generate(self, conn, output_dir: str) -> None:
         print(f"Generating {self.name} heatmap...")
-        query = load_sql_query("heatmap_revenue.sql")
+        query = SQLLoader.load_query("heatmap_revenue.sql")
         df = self.run_query(query, conn)
         if df.empty:
             print("No revenue summary data found for heatmap.")
@@ -260,7 +226,7 @@ class RevenueIntensityHeatmapChart(BaseChart):
 
         df["month"] = pd.to_datetime(df["month"]).dt.strftime("%Y-%m")
 
-        top_countries_query = load_sql_query("revenue_per_country.sql")
+        top_countries_query = SQLLoader.load_query("revenue_per_country.sql")
         top_countries_df_all = self.run_query(top_countries_query, conn)
         top_countries_df = top_countries_df_all.head(10)
         top_countries = top_countries_df["country"].tolist()
@@ -295,20 +261,15 @@ class RevenueIntensityHeatmapChart(BaseChart):
 
 
 class ChartOrchestrator:
-    """
-    Orchestrates the generation of all analytical charts.
-    """
-
     def __init__(self, db_connector, charts: list):
         self._db_connector = db_connector
         self._charts = charts
 
     def generate_all(self, output_dir: str) -> None:
-        """Runs the generation process on all strategies."""
         os.makedirs(output_dir, exist_ok=True)
         conn = self._db_connector.get_connection()
         if conn is None:
-            print("❌ Failed to connect to database for static chart generation.")
+            print("Failed to connect to database for static chart generation.")
             return
 
         print("Connected to database successfully. Beginning chart generation...")
