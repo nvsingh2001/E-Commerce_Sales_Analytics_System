@@ -23,4 +23,7 @@ This repository contains the source code, SQL queries, database schema definitio
    - `feature/04-visualizations`
    - `feature/05-testing`
 
-*Note: Datasets, virtual environments, configuration secrets (`.env`), local screenshots, and compiled documentation outputs (`Project_Documentation.docx`, `test_cases.xlsx`) are kept local and excluded from version control.*
+## Full Project Documentation
+The final project report, architectural diagrams, and analysis results are available in the **[Project Documentation](documentation/Project_Documentation.md)**.
+
+*Note: Raw datasets, virtual environments, configuration secrets (`.env`), and test logs are kept local and excluded from version control.*
